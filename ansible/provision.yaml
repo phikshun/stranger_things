@@ -1,0 +1,78 @@
+---
+- hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+  - name: get ssh public key from Yubikey
+    shell: /usr/bin/ssh-add -L
+    register: ssh_add
+
+  - name: ensure key exists at DigitalOcean
+    digital_ocean: >
+      state=present
+      command=ssh
+      name=my_ssh_key
+      ssh_pub_key={{ ssh_add.stdout }}
+    register: my_ssh_key
+
+  - name: ensure stranger-things droplet exists
+    digital_ocean: >
+      state=present
+      command=droplet
+      name=stranger-things
+      unique_name=yes
+      size_id=512mb
+      region_id=sfo2
+      image_id=ubuntu-14-04-x64
+      ssh_key_ids={{ my_ssh_key.ssh_key.id }}
+    register: stranger_things
+
+  - name: add stranger-things to inventory
+    add_host:
+      name: "{{ stranger_things.droplet.ip_address }}"
+      groups: strangerthings
+    when: stranger_things.droplet is defined
+
+  - name: wait for host to come online
+    wait_for:
+      host: "{{ stranger_things.droplet.ip_address }}"
+      port: 22
+
+- hosts: strangerthings
+  remote_user: root
+
+  tasks:
+    - name: install pip
+      apt:
+        name: python-pip
+        update_cache: yes
+
+    - name: install pip packages
+      pip:
+        name:
+          - slackclient
+          - adafruit-io
+          - requests
+
+    - name: deploy source code
+      template:
+        src: ./stranger_things.py.j2
+        dest: /root/stranger_things.py
+        owner: root
+        group: root
+        mode: 0755
+
+    - name: create upstart script
+      copy:
+        src: ./stranger_things.conf
+        dest: /etc/init/stranger_things.conf
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: start service
+      service:
+        name: stranger_things
+        enabled: yes
+        state: started
