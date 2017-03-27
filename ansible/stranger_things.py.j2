@@ -2,7 +2,7 @@
 
 from slackclient import SlackClient
 from Adafruit_IO import Client
-import sys, time
+import sys, time, traceback
 
 slack_token = "{{ lookup('env', 'SLACK_TOKEN') }}"
 ada_token   = "{{ lookup('env', 'ADA_TOKEN') }}"
@@ -18,12 +18,13 @@ while True:
         for msg in msgs:
           print msg
           if u'type' in msg and msg[u'type'] == u'message' and u'text' in msg:
-            print 'Sending: ' + msg[u'text']
-            aio.send('strangerthings', msg[u'text'])
+            m = msg[u'text'].encode('ascii', 'ignore')
+            print 'Sending: ' + m
+            aio.send('strangerthings', m)
         time.sleep(1)
     else:
       print 'Connected failed... sleeping for 5 seconds'
       time.sleep(5)
   except Exception as e:
-    print 'Error: ' + str(e)
-    time.sleep(15)
+    print traceback.format_exc()
+    time.sleep(10)
